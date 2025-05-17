@@ -29,6 +29,7 @@ typedef struct {
     int row;
     int column;
     int distanceVal;
+    int valid;
 } cell;
 
 typedef struct {

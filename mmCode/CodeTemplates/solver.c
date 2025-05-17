@@ -30,7 +30,8 @@ int mouseX = 0;
 int mouseY = SIZE -1;
 int currentDist = -1;
 int currentDir = 0;
-
+int init_condition = 0;
+int need_flood = 1;
 
 
 int front = 0, back = 0;
@@ -98,6 +99,18 @@ void init_coords(cell(*p)[SIZE] ){
 
 }
 
+void printGrid(){
+    debug_log("\n--- GRID VALUES ---");
+    for (int i = 0; i < SIZE; i++){
+        char row[SIZE * 4];
+        int index = 0;
+        for(int j = 0; j < SIZE; j ++){
+            index += sprintf(&row[index], "%d ", grid[i][j].distanceVal);
+        }
+        debug_log("%s", row);
+    }
+}
+
 
 void reinit_distances(cell(*p)[SIZE]) {
     for (int i = 0; i < SIZE; i++) {
@@ -137,25 +150,27 @@ void flood(){
 
         if (x > 0 && hWalls[x][y] == 0 && grid[x - 1][y].distanceVal == -1) {
             grid[x-1][y].distanceVal = dist;
-            API_setText(x-1, y, text);
+            API_setText(SIZE - 1 - (x - 1), y, text);
             enqueue(x-1, y);
         }
         if (x < SIZE - 1 && hWalls[x + 1][y] == 0 && grid[x + 1][y].distanceVal == -1) {
             grid[x+1][y].distanceVal = dist;
-            API_setText(x+1, y, text);
+            API_setText(SIZE - 1 - (x + 1), y, text);
             enqueue(x+1, y);
         }
         if (y > 0 && vWalls[x][y] == 0 && grid[x][y - 1].distanceVal == -1) {
             grid[x][y-1].distanceVal = dist;
-            API_setText(x, y-1, text);
+            API_setText(SIZE - 1 - x, y - 1, text);
             enqueue(x, y-1);
         }
         if (y < SIZE - 1 && vWalls[x][y + 1] == 0 && grid[x][y + 1].distanceVal == -1) {
             grid[x][y+1].distanceVal = dist;
-            API_setText(x, y+1, text);
+            API_setText(SIZE - 1 - x, y + 1, text);
             enqueue(x, y+1);
         }
     }
+
+printGrid();
 
 }
 
@@ -174,6 +189,35 @@ Direction getTrueDirection(Direction facing, char move) {
     }
 }
 
+
+char getRelativeDirection(Direction facing, int dx, int dy) {
+    // Determine absolute direction of the target square
+    Direction targetDir;
+
+    if (dx == 0 && dy == 1)
+        targetDir = (Direction)NORTH;
+    else if (dx == 1 && dy == 0)
+        targetDir = (Direction)EAST;
+    else if (dx == 0 && dy == -1)
+        targetDir = (Direction)SOUTH;
+    else if (dx == -1 && dy == 0)
+        targetDir = (Direction)WEST;
+    else
+        return '?';  // Not adjacent
+
+    // Now compute relative direction
+    int diff = (targetDir - facing + 4) % 4;
+
+    switch (diff) {
+        case 0: return 'F';  // Front
+        case 1: return 'R';  // Right
+        case 2: return 'B';  // Back
+        case 3: return 'L';  // Left
+        default: return '?';
+    }
+}
+
+
 void updatePosition(Direction facing) {
      // Move Straight
     switch (facing) {
@@ -186,31 +230,37 @@ void updatePosition(Direction facing) {
 
 
 void updateWalls(int x, int y, int dir) {
+    debug_log("in update walls function, direction: %d", dir);
     switch (dir) {
         case 0: // North
-            if (x > 0) {
+            if (x >= 0) {
                 hWalls[y][x] = 1;
+                debug_log("using wall API");
                 API_setWall(x, y, 'n');  
             }
             break;
 
         case 1: // East
-            if (y < SIZE - 1) {
+            debug_log("check value: %d", y);
+            if (y < SIZE ) {
                 vWalls[y][x + 1] = 1;
+                debug_log("using wall API");
                 API_setWall(x, y, 'e');  
             }
             break;
 
         case 2: // South
-            if (x < SIZE - 1) {
+            if (x < SIZE ) {
                 hWalls[y + 1][x] = 1;
+                debug_log("using wall API");
                 API_setWall(x, y, 's');  
             }
             break;
 
         case 3: // West
-            if (y > 0) {
+            if (y >= 0) {
                 vWalls[y][x] = 1;
+                debug_log("using wall API");
                 API_setWall(x, y, 'w');  
             }
             break;
@@ -240,6 +290,44 @@ void printWalls() {
     }
 }
 
+cell get_min(cell e, cell w, cell n, cell s) {
+    cell min;
+    int found = 0; // flag to track if we've found any valid cell yet
+
+    if (e.valid) {
+        min = e;
+        found = 1;
+    }
+    if (w.valid) {
+        if (!found || w.distanceVal < min.distanceVal) {
+            min = w;
+            found = 1;
+        }
+    }
+    if (s.valid) {
+        if (!found || s.distanceVal < min.distanceVal) {
+            min = s;
+            found = 1;
+        }
+    }
+    if (n.valid) {
+        if (!found || n.distanceVal < min.distanceVal) {
+            min = n;
+            found = 1;
+        }
+    }
+
+    if (!found) {
+        // Handle the case where none are valid
+        // Example: return a dummy invalid cell with max distance
+        min.distanceVal = 999999;
+        min.valid = 0;
+    }
+
+    return min;
+}
+
+
 
 
 
@@ -250,7 +338,8 @@ void printWalls() {
 
 // Put your implementation of floodfill here!
 Action floodFill() {
-    flood();
+    if (need_flood == 1)
+        flood();
 
     debug_log("\n--- DEBUG INFO ---");
     debug_log("Current Position: (%d, %d)", mouseX, mouseY);
@@ -280,53 +369,161 @@ Action floodFill() {
         printWalls();
     }
 
-    // 1. Check Left First
-    if (!API_wallLeft()) {
-        debug_log("Turning LEFT");
-        int newDir = getTrueDirection(currentDir, 'L');
-        currentDir = newDir;
+
+    cell west, east, north, south;
+    west.valid = 0;
+    east.valid = 0;
+    north.valid = 0;
+    south.valid = 0;
+
+    // DOES NOT WORK
+    
+    if (mouseX > 0){
+        west = grid[mouseY][mouseX-1];
+        west.column = mouseX -1;
+        west.row = mouseY;
+        west.valid = 1;
+    } 
+    if (mouseX < SIZE-1){
+        east = grid[mouseY][mouseX+1];
+        east.column = mouseX +1;
+        east.row = mouseY;
+        east.valid = 1;
+    }
+    if (mouseY > 0){
+        north = grid[mouseY-1][mouseX];
+        north.column = mouseX;
+        north.row = mouseY-1;
+        north.valid = 1;
+    }
+    if (mouseY < SIZE-1){
+        south = grid[mouseY+1][mouseX];
+        south.column = mouseX;
+        south.row = mouseY +1;
+        south.valid = 1;
+    }
+
+     debug_log(" north (%d, %d)", north.column, north.row);
+     debug_log("east : (%d, %d)", east.column, east.row);
+
+
+    cell next_pos = get_min(east, west, north, south);
+    
+
+    int dx = next_pos.column - mouseX;
+    int dy = next_pos.row - mouseY;
+    debug_log(" DX and DY : (%d, %d)", dx, dy);
+
+    char instruction = getRelativeDirection(currentDir, dx, dy);
+
+    debug_log("INSTRUCTION: %c", instruction);
+    debug_log(" COORDS : (%d, %d)", next_pos.column, next_pos.row);
+
+    switch (instruction)
+    {
+    case 'L':
+        if (!API_wallLeft()) {
+            debug_log("Turning LEFT");
+            int newDir = getTrueDirection(currentDir, 'L');
+            currentDir = newDir;
+            updatePosition(currentDir);
+            flood();
+            return LEFT;
+        } else {
+            debug_log("Left wall detected");
+            updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'L'));
+            printWalls();
+        }
+        break;
+
+    case 'F':
+        if (forwardOpen) {
+            debug_log("Moving FORWARD");
+            updatePosition(currentDir);
+            flood();
+            return FORWARD;
+        } else {
+            debug_log("Front wall detected");
+            updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'F'));
+            printWalls();
+        }
+        break;
+    case 'R':
+        if (rightOpen) {
+            debug_log("Turning RIGHT");
+            int newDir = getTrueDirection(currentDir, 'R');
+            currentDir = newDir;
+            updatePosition(currentDir);
+            flood();
+            return RIGHT;
+        } else {
+            debug_log("Right wall detected");
+            updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'R'));
+            printWalls();
+        }
+        break;
+
+    case 'B':
+        API_turnLeft();
+        currentDir = getTrueDirection(currentDir, 'L');
+        currentDir = getTrueDirection(currentDir, 'L');
         updatePosition(currentDir);
-        flood();
         return LEFT;
-    } else {
-        debug_log("Left wall detected");
-        updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'L'));
-        printWalls();
+        break;
+
+
+    default:
+        return IDLE;
+        break;
     }
 
-    // 2. Check Forward
-    if (forwardOpen) {
-        debug_log("Moving FORWARD");
-        updatePosition(currentDir);
-        flood();
-        return FORWARD;
-    } else {
-        debug_log("Front wall detected");
-        updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'F'));
-        printWalls();
-    }
+    // 1. Check Left First
+    // if (!API_wallLeft()) {
+    //     debug_log("Turning LEFT");
+    //     int newDir = getTrueDirection(currentDir, 'L');
+    //     currentDir = newDir;
+    //     updatePosition(currentDir);
+    //     flood();
+    //     return LEFT;
+    // } else {
+    //     debug_log("Left wall detected");
+    //     updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'L'));
+    //     printWalls();
+    // }
 
-    // 3. Check Right
-    if (rightOpen) {
-        debug_log("Turning RIGHT");
-        int newDir = getTrueDirection(currentDir, 'R');
-        currentDir = newDir;
-        updatePosition(currentDir);
-        flood();
-        return RIGHT;
-    } else {
-        debug_log("Right wall detected");
-        updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'R'));
-        printWalls();
-    }
+    // // 2. Check Forward
+    // if (forwardOpen) {
+    //     debug_log("Moving FORWARD");
+    //     updatePosition(currentDir);
+    //     flood();
+    //     return FORWARD;
+    // } else {
+    //     debug_log("Front wall detected");
+    //     updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'F'));
+    //     printWalls();
+    // }
 
-    // If stuck, return IDLE instead of forcing a movement
-    debug_log("No moves available! Staying IDLE.");
-    API_turnLeft();
-    currentDir = getTrueDirection(currentDir, 'L');
-    currentDir = getTrueDirection(currentDir, 'L');
-    updatePosition(currentDir);
-    return LEFT;
+    // // 3. Check Right
+    // if (rightOpen) {
+    //     debug_log("Turning RIGHT");
+    //     int newDir = getTrueDirection(currentDir, 'R');
+    //     currentDir = newDir;
+    //     updatePosition(currentDir);
+    //     flood();
+    //     return RIGHT;
+    // } else {
+    //     debug_log("Right wall detected");
+    //     updateWalls(mouseX, mouseY, getTrueDirection(currentDir, 'R'));
+    //     printWalls();
+    // }
+
+    // // If stuck, return IDLE instead of forcing a movement
+    // debug_log("No moves available! Staying IDLE.");
+    // API_turnLeft();
+    // currentDir = getTrueDirection(currentDir, 'L');
+    // currentDir = getTrueDirection(currentDir, 'L');
+    // updatePosition(currentDir);
+    // return LEFT;
 }
 
 
