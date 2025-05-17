@@ -144,27 +144,27 @@ void flood(){
     while (!isQueueEmpty()){
         point p = dequeue();
         int x = p.x, y = p.y;
-        int dist = grid[x][y].distanceVal + 1;
+        int dist = grid[y][x].distanceVal + 1;
         char text [10];
         sprintf(text, "%d", dist);
 
         if (x > 0 && hWalls[x][y] == 0 && grid[x - 1][y].distanceVal == -1) {
-            grid[x-1][y].distanceVal = dist;
+            grid[y][x-1].distanceVal = dist;
             API_setText(SIZE - 1 - (x - 1), y, text);
             enqueue(x-1, y);
         }
         if (x < SIZE - 1 && hWalls[x + 1][y] == 0 && grid[x + 1][y].distanceVal == -1) {
-            grid[x+1][y].distanceVal = dist;
+            grid[y][x+1].distanceVal = dist;
             API_setText(SIZE - 1 - (x + 1), y, text);
             enqueue(x+1, y);
         }
         if (y > 0 && vWalls[x][y] == 0 && grid[x][y - 1].distanceVal == -1) {
-            grid[x][y-1].distanceVal = dist;
+            grid[y-1][x].distanceVal = dist;
             API_setText(SIZE - 1 - x, y - 1, text);
             enqueue(x, y-1);
         }
         if (y < SIZE - 1 && vWalls[x][y + 1] == 0 && grid[x][y + 1].distanceVal == -1) {
-            grid[x][y+1].distanceVal = dist;
+            grid[y+1][x].distanceVal = dist;
             API_setText(SIZE - 1 - x, y + 1, text);
             enqueue(x, y+1);
         }
@@ -290,41 +290,29 @@ void printWalls() {
     }
 }
 
-cell get_min(cell e, cell w, cell n, cell s) {
-    cell min;
-    int found = 0; // flag to track if we've found any valid cell yet
-
-    if (e.valid) {
-        min = e;
-        found = 1;
+cell *get_next_pos(Direction desired){
+    cell *next_pos;
+    if (desired == east){
+        next_pos = &grid[mouseY][mouseX+1];
+        next_pos->column= mouseX +1;
+        next_pos -> row = mouseY;
     }
-    if (w.valid) {
-        if (!found || w.distanceVal < min.distanceVal) {
-            min = w;
-            found = 1;
-        }
+    if (desired == west){
+        next_pos = &grid[mouseY][mouseX-1];
+        next_pos->column= mouseX -1;
+        next_pos -> row = mouseY;
     }
-    if (s.valid) {
-        if (!found || s.distanceVal < min.distanceVal) {
-            min = s;
-            found = 1;
-        }
+    if(desired == south){
+        next_pos = &grid[mouseY+1][mouseX];
+        next_pos->column= mouseX;
+        next_pos -> row = mouseY + 1;
     }
-    if (n.valid) {
-        if (!found || n.distanceVal < min.distanceVal) {
-            min = n;
-            found = 1;
-        }
+    if (desired == north){
+        next_pos = &grid[mouseY-1][mouseX];
+        next_pos->column= mouseX;
+        next_pos -> row = mouseY -1;
     }
-
-    if (!found) {
-        // Handle the case where none are valid
-        // Example: return a dummy invalid cell with max distance
-        min.distanceVal = 999999;
-        min.valid = 0;
-    }
-
-    return min;
+    return next_pos;
 }
 
 
@@ -338,9 +326,10 @@ cell get_min(cell e, cell w, cell n, cell s) {
 
 // Put your implementation of floodfill here!
 Action floodFill() {
-    if (need_flood == 1)
+    if (need_flood == 1){
         flood();
-
+        need_flood = 0;
+    }
     debug_log("\n--- DEBUG INFO ---");
     debug_log("Current Position: (%d, %d)", mouseX, mouseY);
     debug_log("Current Direction: %d", currentDir);
@@ -370,54 +359,83 @@ Action floodFill() {
     }
 
 
-    cell west, east, north, south;
-    west.valid = 0;
-    east.valid = 0;
-    north.valid = 0;
-    south.valid = 0;
+    cell *left, *right, *forward;
+
+    cell* availible_moves[3];
+    int moves_num = 0 ;
+
 
     // DOES NOT WORK
     
-    if (mouseX > 0){
-        west = grid[mouseY][mouseX-1];
-        west.column = mouseX -1;
-        west.row = mouseY;
-        west.valid = 1;
-    } 
-    if (mouseX < SIZE-1){
-        east = grid[mouseY][mouseX+1];
-        east.column = mouseX +1;
-        east.row = mouseY;
-        east.valid = 1;
+    if (leftOpen){
+        Direction d = getTrueDirection(currentDir, 'L');
+        left = get_next_pos(d);
+        left->move = 'L';
+        availible_moves[moves_num++] = left;
+        debug_log ("added left");
     }
-    if (mouseY > 0){
-        north = grid[mouseY-1][mouseX];
-        north.column = mouseX;
-        north.row = mouseY-1;
-        north.valid = 1;
+    if (rightOpen){
+        Direction d = getTrueDirection(currentDir, 'R');
+        right = get_next_pos(d);
+        right->move = 'R';
+        availible_moves[moves_num++] = right;
+        debug_log ("added right");
     }
-    if (mouseY < SIZE-1){
-        south = grid[mouseY+1][mouseX];
-        south.column = mouseX;
-        south.row = mouseY +1;
-        south.valid = 1;
+    if (forwardOpen){
+        Direction d = getTrueDirection(currentDir, 'F');
+        forward = get_next_pos(d);
+        forward->move = 'F';
+        availible_moves[moves_num++] = forward;
+        debug_log ("added forward");
+        int value = forward->distanceVal;
+        debug_log ("distance_val: %d", value);
+
     }
 
-     debug_log(" north (%d, %d)", north.column, north.row);
-     debug_log("east : (%d, %d)", east.column, east.row);
+    debug_log ("moves num: %d", moves_num);
 
+     //debug_log(" north (%d, %d)", north.column, north.row);
+     //debug_log("east : (%d, %d)", east.column, east.row);
+    int min;
+    
+    cell *next_pos = NULL;
+    
+    
+    if (moves_num > 0) {
+    next_pos = availible_moves[0];
+    min = next_pos->distanceVal;
+    for (int i = 1; i < moves_num; i++) {
+        int dist = availible_moves[i]->distanceVal;
+        if (dist < min) {
+            min = dist;
+            next_pos = availible_moves[i];
+        }
+    }
+    } else {
+        min = -1;
+    }
 
-    cell next_pos = get_min(east, west, north, south);
+    debug_log ("min value: %d", min);
+
+    char instruction;
+
+    if (min == -1){
+        need_flood = 1;
+        instruction = 'B';
+    }
+    else {
+        instruction = next_pos->move;
+    }
+
+    if (min > grid[mouseY][mouseX].distanceVal){
+        need_flood = 1;
+        return IDLE;
+    }
+
     
 
-    int dx = next_pos.column - mouseX;
-    int dy = next_pos.row - mouseY;
-    debug_log(" DX and DY : (%d, %d)", dx, dy);
-
-    char instruction = getRelativeDirection(currentDir, dx, dy);
-
     debug_log("INSTRUCTION: %c", instruction);
-    debug_log(" COORDS : (%d, %d)", next_pos.column, next_pos.row);
+    //debug_log(" COORDS : (%d, %d)", next_pos->column, next_pos->row);
 
     switch (instruction)
     {
@@ -464,6 +482,7 @@ Action floodFill() {
         break;
 
     case 'B':
+        debug_log ("here");
         API_turnLeft();
         currentDir = getTrueDirection(currentDir, 'L');
         currentDir = getTrueDirection(currentDir, 'L');
